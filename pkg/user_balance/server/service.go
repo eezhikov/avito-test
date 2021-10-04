@@ -27,8 +27,7 @@ func (s *ServiceBalance) BalanceChange(ctx *gin.Context) {
 	response := service.UserBalanceAddResponse{}
 	req := service.UserBalanceAddRequest{}
 
-	err := ctx.BindJSON(&req)
-	if err != nil {
+	if err := ctx.BindJSON(&req); err != nil {
 		s.logger.Error("can't parse json", zap.Error(err))
 		ctx.JSON(http.StatusBadRequest, gin.H{
 			"error": "wrong parameters",
@@ -51,9 +50,8 @@ func (s *ServiceBalance) BalanceChange(ctx *gin.Context) {
 	}
 
 	balanceRepository := postgres.NewBalanceRepo(ctx, s.db)
-	err = balanceRepository.BalanceChange(req.Quality, req.Id)
 
-	if err != nil {
+	if err := balanceRepository.BalanceChange(req.Quality, req.Id); err != nil {
 		response.Credited = false
 		ctx.JSON(http.StatusInternalServerError, response)
 		s.logger.Error("balance change error", zap.Error(err))
@@ -68,9 +66,7 @@ func (s *ServiceBalance) MoneyTransaction(ctx *gin.Context) {
 	response := service.UserBalanceTransactionResponse{}
 	req := service.UserBalanceTransactionRequest{}
 
-	err := ctx.BindJSON(&req)
-
-	if err != nil {
+	if err := ctx.BindJSON(&req); err != nil {
 
 		s.logger.Error("can't bind json", zap.Error(err))
 		ctx.JSON(http.StatusBadRequest, gin.H{
@@ -94,9 +90,7 @@ func (s *ServiceBalance) MoneyTransaction(ctx *gin.Context) {
 
 	balanceRepository := postgres.NewBalanceRepo(ctx, s.db)
 
-	err = balanceRepository.BalanceTransaction(req.Quality, req.UserIdFrom, req.UserIdTo)
-
-	if err != nil {
+	if err := balanceRepository.BalanceTransaction(req.Quality, req.UserIdFrom, req.UserIdTo); err != nil {
 		response.Transaction = false
 		ctx.JSON(http.StatusOK, response)
 		s.logger.Error("transaction error", zap.Error(err))
@@ -142,10 +136,8 @@ func (s *ServiceBalance) UserBalance(ctx *gin.Context) {
 
 	currencyParam := ctx.Request.URL.Query()
 	if len(currencyParam) == 0 {
-		ctx.JSON(http.StatusBadRequest, gin.H{
-			"error": "wrong parameters",
-		})
-		s.logger.Error("wrong parameters", zap.Error(err))
+		ctx.JSON(http.StatusOK, response)
+		//s.logger.Error("wrong parameters", zap.Error(err))
 		return
 	}
 	if _, ok := currencyParam["currency"]; !ok {

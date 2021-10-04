@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/jackc/pgx/v4"
 	"github.com/jackc/pgx/v4/pgxpool"
@@ -24,10 +25,8 @@ func NewBalanceRepo(ctx context.Context, db *pgxpool.Pool) repository.BalanceRep
 
 func (b *balanceRepoPostgres) GetBalanceById(id int) (*models.Balance, error) {
 	var balance sql.NullFloat64
-	err := b.db.QueryRow(b.ctx, "SELECT balance FROM balance WHERE id=$1", id).Scan(&balance)
-	//defer rows.Close()
-	if err != nil {
 
+	if err := b.db.QueryRow(b.ctx, "SELECT balance FROM balance WHERE id=$1", id).Scan(&balance); err != nil {
 		return nil, err
 	}
 	return &models.Balance{Id: id, Balance: balance.Float64}, nil
@@ -40,15 +39,19 @@ func (b *balanceRepoPostgres) BalanceChange(quality float64, id int) error {
 	}
 	defer tx.Rollback(b.ctx)
 	var balance float64
-	err = tx.QueryRow(b.ctx, "SELECT balance FROM balance WHERE id=$1", id).Scan(&balance)
-	if err != nil {
+
+	if err := tx.QueryRow(b.ctx, "SELECT balance FROM balance WHERE id=$1", id).Scan(&balance); err != nil {
 		return err
 	}
 	newBalance := balance + quality
-	tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", newBalance, id)
+	if newBalance < 0 {
+		return errors.New("balance is lower than quality, your change not made")
+	}
+	if _, err := tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", newBalance, id); err != nil {
+		return err
+	}
 
-	err = tx.Commit(b.ctx)
-	if err != nil {
+	if err := tx.Commit(b.ctx); err != nil {
 		return err
 	}
 	return err
@@ -69,24 +72,26 @@ func (b *balanceRepoPostgres) BalanceTransaction(quality float64, userIdFrom int
 	for rows.Next() {
 		var userIdRow int
 		var userBalanceRow float64
-		err = rows.Scan(&userIdRow, &userBalanceRow)
-		if err != nil {
+		if err := rows.Scan(&userIdRow, &userBalanceRow); err != nil {
 			fmt.Println(err)
+			return err
 		}
 		userBalance[userIdRow] = userBalanceRow
 
 	}
+	if userBalance[userIdFrom]-quality < 0 {
+		return errors.New("balance is lower than quality, your change not made")
+	}
 
-	_, err = tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", userBalance[userIdFrom]-quality, userIdFrom)
-	if err != nil {
+	if _, err = tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", userBalance[userIdFrom]-quality, userIdFrom); err != nil {
 		return err
 	}
-	_, err = tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", userBalance[userIdTo]+quality, userIdTo)
-	if err != nil {
+
+	if _, err = tx.Exec(b.ctx, "UPDATE balance SET balance = $1 WHERE id = $2", userBalance[userIdTo]+quality, userIdTo); err != nil {
 		return err
 	}
-	err = tx.Commit(b.ctx)
-	if err != nil {
+
+	if err = tx.Commit(b.ctx); err != nil {
 		return err
 	}
 	return err
